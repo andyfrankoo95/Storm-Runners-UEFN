@@ -1,0 +1,135 @@
+using { /Fortnite.com/Devices }
+using { /Verse.org/Simulation }
+
+# Convierte un string en un message para el HUD
+StringToMessage<localizes>(Text:string):message = "{Text}"
+
+sr_race_Multiplayerverse := class(creative_device):
+
+    #=========================================================
+    # DISPOSITIVOS (Asignar en el editor de UEFN)
+    #=========================================================
+
+    @editable
+    CountdownHUD : hud_message_device = hud_message_device{}
+
+    @editable
+    FinishHUD : hud_message_device = hud_message_device{}
+
+    @editable
+    RaceTimer : timer_device = timer_device{}
+
+    @editable
+    StartButtonA : button_device = button_device{}
+
+    @editable
+    StartButtonB : button_device = button_device{}
+
+    @editable
+    RaceStartSequence : cinematic_sequence_device = cinematic_sequence_device{}
+
+    @editable
+    FinishTrigger : trigger_device = trigger_device{}
+
+    #=========================================================
+    # ESTADO DE LA CARRERA
+    #=========================================================
+
+    var IsRaceRunning : logic = false
+    var RaceFinished : logic = false
+
+    #=========================================================
+    # INICIO DEL DISPOSITIVO
+    #=========================================================
+
+    OnBegin<override>()<suspends>:void =
+        Print("SR Race Manager Ready")
+        StartButtonA.InteractedWithEvent.Subscribe(OnStartButtonPressed)
+        StartButtonB.InteractedWithEvent.Subscribe(OnStartButtonPressed)
+        FinishTrigger.TriggeredEvent.Subscribe(OnFinishTriggered)
+
+    #=========================================================
+    # MANEJADOR DEL BOTÓN
+    #=========================================================
+
+    OnStartButtonPressed(Agent:agent):void =
+        if (IsRaceRunning = true):
+            return
+        set IsRaceRunning = true
+        StartButtonA.Disable()
+        StartButtonB.Disable()
+        spawn { StartRace() }
+
+    #=========================================================
+    # MANEJADOR DEL TRIGGER DE FINALIZACIÓN
+    #=========================================================
+
+    OnFinishTriggered(MaybeAgent:?agent):void =
+        Print("DEBUG: FinishTrigger fue activado.")
+        # Solo continuamos si el trigger fue activado por un jugador válido
+        if (FinishingAgent := MaybeAgent?):
+            Print("DEBUG: El trigger fue activado por un agente válido.")
+            FinishRace(FinishingAgent)
+        else:
+            Print("DEBUG: El trigger fue activado, pero no por un agente (ignorado).")
+
+    #=========================================================
+    # SECUENCIA PRINCIPAL DE LA CARRERA
+    #=========================================================
+
+    StartRace()<suspends>:void =
+        RunCountdown()
+        Print("Race Started!")
+
+    #=========================================================
+    # CUENTA REGRESIVA EN EL HUD
+    #=========================================================
+
+    RunCountdown()<suspends>:void =
+        CountdownHUD.Show(StringToMessage("5"), ?DisplayTime := 1.0)
+        Sleep(1.0)
+        CountdownHUD.Show(StringToMessage("4"), ?DisplayTime := 1.0)
+        Sleep(1.0)
+        CountdownHUD.Show(StringToMessage("3"), ?DisplayTime := 1.0)
+        Sleep(1.0)
+        CountdownHUD.Show(StringToMessage("2"), ?DisplayTime := 1.0)
+        Sleep(1.0)
+        CountdownHUD.Show(StringToMessage("1"), ?DisplayTime := 1.0)
+        Sleep(1.0)
+        CountdownHUD.Show(StringToMessage("GO!"), ?DisplayTime := 2.0)
+        Sleep(0.25)
+        RaceStartSequence.Play()
+        RaceTimer.Start()
+
+    #=========================================================
+    # FUNCIÓN PARA REINICIAR (opcional)
+    #=========================================================
+
+    ResetRace():void =
+        set IsRaceRunning = false
+        set RaceFinished = false
+        StartButtonA.Enable()
+        StartButtonB.Enable()
+        Print("Race Reset")
+
+    #=========================================================
+    # FUNCIÓN PARA FINALIZAR (opcional)
+    #=========================================================
+
+    FinishRace(FinishingAgent:agent):void =
+        Print("DEBUG: FinishRace fue llamado.")
+        if (RaceFinished = true):
+            Print("DEBUG: La carrera ya había terminado, ignorando.")
+            return
+        
+        set RaceFinished = true
+        Print("DEBUG: Mostrando FinishHUD al agente.")
+    
+        # Mostramos el mensaje SOLO al jugador que cruzó la meta
+        FinishHUD.Show(
+            FinishingAgent,
+            StringToMessage("🏁 FINISH!"),
+            ?DisplayTime := 3.0
+        )
+
+        Print("Race Finished")
