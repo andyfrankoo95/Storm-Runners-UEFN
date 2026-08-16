@@ -1,0 +1,808 @@
+Manager Funcional 16 agosto 2026:
+using { /Fortnite.com/Devices }
+using { /Fortnite.com/Characters }
+using { /Fortnite.com/Playspaces }
+using { /Verse.org/Simulation }
+
+# =========================================================
+# SR_RaceManager
+#
+# - Player registration
+# - Race start
+# - Countdown
+# - Gates
+# - Timer
+# - Finish
+# - Results
+# - Leaderboard
+# - Timeout
+# - DNF
+# - Reset
+# =========================================================
+
+SR_RaceManager := class(creative_device):
+
+
+    # =====================================================
+    # MANAGERS
+    # =====================================================
+
+    @editable
+    UIManager : SR_UIManager = SR_UIManager{}
+
+    @editable
+    TimerManager : SR_TimerManager = SR_TimerManager{}
+
+    @editable
+    PlayerManager : SR_PlayerManager = SR_PlayerManager{}
+
+    @editable
+    EventManager : SR_EventManager = SR_EventManager{}
+
+    @editable
+    LeaderboardManager : SR_LeaderboardManager = SR_LeaderboardManager{}
+
+    @editable
+    CheckpointManager : SR_CheckpointManager = SR_CheckpointManager{}
+
+    @editable
+    CoinManager : SR_CoinManager = SR_CoinManager{}
+
+    @editable
+    PowerUpManager : SR_PowerUpManager = SR_PowerUpManager{}
+
+    @editable
+    CombatManager : SR_CombatManager = SR_CombatManager{}
+
+    @editable
+    SaveSystem : SR_SaveSystem = SR_SaveSystem{}
+
+
+    # =====================================================
+    # HUD CONTROLLERS
+    # =====================================================
+
+    @editable
+    HUDC_Lobby : hud_controller_device = hud_controller_device{}
+
+    @editable
+    HUDC_Race : hud_controller_device = hud_controller_device{}
+
+
+    # =====================================================
+    # START BUTTONS
+    # =====================================================
+
+    @editable
+    StartButtonA : button_device = button_device{}
+
+    @editable
+    StartButtonB : button_device = button_device{}
+
+
+    # =====================================================
+    # FINISH ZONE
+    # =====================================================
+
+    @editable
+    FinishZone : mutator_zone_device = mutator_zone_device{}
+
+
+    # =====================================================
+    # LEADERBOARD
+    # =====================================================
+
+    @editable
+    TP_Leaderboard : teleporter_device = teleporter_device{}
+
+
+    # =====================================================
+    # CONFIG
+    # =====================================================
+
+    @editable
+    MinPlayersToStart : int = 1
+
+    @editable
+    FinishFreezeDelay : float = 1.0
+
+    @editable
+    FinishDelay : float = 3.0
+
+    @editable
+    ResultsDelay : float = 5.0
+
+
+    # =====================================================
+    # RACE STATE
+    # =====================================================
+
+    var RaceStarted : logic = false
+
+
+    # =====================================================
+    # EVENTS
+    # =====================================================
+
+    RaceCompletedEvent : event(void) = event(void){}
+
+
+    # =====================================================
+    # PLAYERS
+    # =====================================================
+
+    var RegisteredPlayers : []player = array{}
+
+
+    # =====================================================
+    # INITIALIZATION
+    # =====================================================
+
+    OnBegin<override>()<suspends>:void =
+
+        Print("==============================")
+        Print("SR_RaceManager Ready")
+        Print("==============================")
+
+
+        # Lobby HUD
+
+        HUDC_Lobby.Enable()
+        HUDC_Race.Disable()
+
+
+        # Register current players
+
+        for (Player : GetPlayspace().GetPlayers()):
+
+            RegisterPlayer(Player)
+
+
+        # Register new players
+
+        GetPlayspace().PlayerAddedEvent().Subscribe(
+            OnPlayerAdded
+        )
+
+
+        # Start buttons
+
+        StartButtonA.InteractedWithEvent.Subscribe(
+            OnStartButtonPressed
+        )
+
+        StartButtonB.InteractedWithEvent.Subscribe(
+            OnStartButtonPressed
+        )
+
+
+        # Finish zone
+
+        FinishZone.AgentEntersEvent.Subscribe(
+            OnFinishTriggered
+        )
+
+
+        # Timeout
+
+        spawn{WaitForRaceTimeout()}
+
+
+        Print("Start Buttons Connected")
+        Print("Finish Zone Connected")
+        Print("Leaderboard Teleporter Connected")
+        Print("Timeout Listener Started")
+
+
+    # =====================================================
+    # PLAYER REGISTRATION
+    # =====================================================
+
+    OnPlayerAdded(Player:player):void =
+
+        RegisterPlayer(Player)
+
+
+    RegisterPlayer(Player:player):void =
+
+        var AlreadyRegistered : logic = false
+
+        for (ExistingPlayer : RegisteredPlayers):
+
+            if (ExistingPlayer = Player):
+
+                set AlreadyRegistered = true
+
+        if (AlreadyRegistered = false):
+
+            set RegisteredPlayers += array{Player}
+
+            Print("==============================")
+            Print("PLAYER REGISTERED")
+            Print("Registered Players: {RegisteredPlayers.Length}")
+            Print("==============================")
+
+
+    # =====================================================
+    # START BUTTON
+    # =====================================================
+
+    OnStartButtonPressed(Player:agent):void =
+
+        Print("==============================")
+        Print("START BUTTON PRESSED")
+        Print("==============================")
+
+        RequestRaceStart()
+
+
+    # =====================================================
+    # REQUEST START
+    # =====================================================
+
+    RequestRaceStart():void =
+
+        # Block active race
+
+        if (RaceStarted?):
+
+            Print("Race already started. Request ignored.")
+
+            return
+
+
+        # Check players
+
+        if (RegisteredPlayers.Length < MinPlayersToStart):
+
+            Print("==============================")
+            Print("NOT ENOUGH PLAYERS")
+            Print("Required: {MinPlayersToStart}")
+            Print("Registered: {RegisteredPlayers.Length}")
+            Print("==============================")
+
+            return
+
+
+        # Lock race
+
+        set RaceStarted = true
+
+        Print("==============================")
+        Print("RACE START ACCEPTED")
+        Print("Players: {RegisteredPlayers.Length}")
+        Print("==============================")
+
+
+        spawn{StartRaceSequence()}
+
+
+    # =====================================================
+    # START SEQUENCE
+    # =====================================================
+
+    StartRaceSequence()<suspends>:void =
+
+        Print("==============================")
+        Print("COUNTDOWN STARTED")
+        Print("==============================")
+
+
+        # 5 4 3 2 1 GO
+
+        UIManager.ShowCountdown()
+
+        Print("==============================")
+        Print("COUNTDOWN COMPLETE")
+        Print("==============================")
+
+
+        StartRace()
+
+
+    # =====================================================
+    # START RACE
+    # =====================================================
+
+    StartRace():void =
+
+        Print("==============================")
+        Print("STARTING RACE")
+        Print("==============================")
+
+
+        # Race HUD
+
+        HUDC_Lobby.Disable()
+        HUDC_Race.Enable()
+
+
+        # Enable combat
+
+        CombatManager.EnableCombat()
+
+
+        # Gates
+
+        EventManager.StartRaceEvents()
+
+        Print("Race Gates Opened")
+
+
+        # Timer
+
+        TimerManager.StartRaceTimer()
+
+        Print("Global Race Timer Started")
+
+
+        # Enable coins HUD
+
+        UIManager.EnableCoinsHUD()
+
+
+        # Coins HUD
+
+        for (Player : RegisteredPlayers):
+
+            UIManager.ShowCoins(Player)
+
+
+        Print("Coins HUD Shown")
+
+
+        Print("==============================")
+        Print("RACE IS LIVE")
+        Print("==============================")
+
+
+    # =====================================================
+    # FINISH ZONE
+    # =====================================================
+
+    OnFinishTriggered(Player:agent):void =
+
+        Print("==============================")
+        Print("FINISH DETECTED")
+        Print("==============================")
+
+
+        # Ignore inactive race
+
+        if (RaceStarted = false):
+
+            Print("Race is not active. Finish ignored.")
+
+            return
+
+
+        # Ignore duplicate finish
+
+        Finished := PlayerManager.HasFinished(Player)
+
+        if (Finished?):
+
+            Print("Player already finished.")
+
+            return
+
+
+        # Mark finished
+
+        PlayerManager.SetFinished(
+            Player,
+            true
+        )
+
+
+        # Register result
+
+        LeaderboardManager.RegisterFinish(Player)
+
+        Print("Player marked as FINISHED")
+
+
+        # Finish sequence
+
+        spawn{FinishPlayerSequence(Player)}
+
+
+    # =====================================================
+    # FINISH SEQUENCE
+    # =====================================================
+
+    FinishPlayerSequence(Player:agent)<suspends>:void =
+
+        Print("==============================")
+        Print("FINISH SEQUENCE STARTED")
+        Print("==============================")
+
+
+        # Finish delay
+
+        Sleep(FinishFreezeDelay)
+
+
+        # Freeze player
+
+        FreezePlayer(Player)
+
+        Print("Player Frozen")
+
+
+        # Finish HUD
+
+        UIManager.ShowFinish(Player)
+
+        Print("FINISH HUD Displayed")
+
+
+        # Results
+
+        FinishSequence(Player)
+
+
+    # =====================================================
+    # RESULTS
+    # =====================================================
+
+    FinishSequence(Player:agent)<suspends>:void =
+
+        # Finish wait
+
+        Sleep(FinishDelay)
+
+        Print("==============================")
+        Print("SHOWING RACE RESULTS")
+        Print("==============================")
+
+
+        # Results HUD
+
+        UIManager.ShowResults(Player)
+
+
+        # Leaderboard wait
+
+        Sleep(ResultsDelay + 1.0)
+
+
+        Print("Teleporting finished player to leaderboard")
+
+
+        # Hide coins
+
+        UIManager.HideCoins(Player)
+
+
+        # Remove weapons
+
+        CombatManager.RemoveWeapons(Player)
+
+        Print("Player Weapons Removed")
+
+
+        # Teleport
+
+        TP_Leaderboard.Teleport(Player)
+
+        Print("Player Teleported to Leaderboard")
+
+
+        # Restore movement
+
+        UnfreezePlayer(Player)
+
+        Print("Player Movement Restored")
+
+
+        # Check race completion
+
+        CheckRaceComplete()
+
+
+    # =====================================================
+    # CHECK RACE COMPLETE
+    # =====================================================
+
+    CheckRaceComplete():void =
+
+        # Check every player
+
+        for (Player : RegisteredPlayers):
+
+            Finished := PlayerManager.HasFinished(Player)
+
+            if (Finished = false):
+
+                Print("Race still active.")
+
+                return
+
+
+        # Everyone finished
+
+        Print("==============================")
+        Print("ALL PLAYERS FINISHED")
+        Print("==============================")
+
+
+        RaceCompletedEvent.Signal(())
+
+
+    # =====================================================
+    # FREEZE PLAYER
+    # =====================================================
+
+    FreezePlayer(Player:agent):void =
+
+        if (Character := Player.GetFortCharacter[]):
+
+            Character.PutInStasis(
+                stasis_args{
+                    AllowTurning := false,
+                    AllowFalling := true,
+                    AllowEmotes := false
+                }
+            )
+
+
+    # =====================================================
+    # UNFREEZE PLAYER
+    # =====================================================
+
+    UnfreezePlayer(Player:agent):void =
+
+        if (Character := Player.GetFortCharacter[]):
+
+            Character.ReleaseFromStasis()
+
+
+    # =====================================================
+    # WAIT TIMEOUT
+    # =====================================================
+
+    WaitForRaceTimeout()<suspends>:void =
+
+        loop:
+
+            TimerManager.RaceTimeoutEvent.Await()
+
+            Print("==============================")
+            Print("RACE TIMEOUT EVENT RECEIVED")
+            Print("==============================")
+
+
+            OnRaceTimeOut()
+
+
+    # =====================================================
+    # TIMEOUT
+    # =====================================================
+
+    OnRaceTimeOut():void =
+
+        Print("==============================")
+        Print("PROCESSING TIME OUT")
+        Print("==============================")
+
+
+        # Stop race
+
+        set RaceStarted = false
+
+
+        # Process players
+
+        for (Player : RegisteredPlayers):
+
+            Finished := PlayerManager.HasFinished(Player)
+
+
+            # Finished players
+
+            if (Finished?):
+
+                Print("Player already finished. No DNF.")
+
+
+            # Unfinished players
+
+            else:
+
+                PlayerManager.SetDNF(
+                    Player,
+                    true
+                )
+
+
+                LeaderboardManager.RegisterDNF(Player)
+
+
+                Print("==============================")
+                Print("PLAYER MARKED DNF")
+                Print("==============================")
+
+
+                spawn{DNFSequence(Player)}
+
+
+        Print("==============================")
+        Print("DNF PROCESSING COMPLETE")
+        Print("==============================")
+
+
+        # Signal completion
+
+        spawn{SignalCompletionAfterTimeout()}
+
+
+    # =====================================================
+    # DNF SEQUENCE
+    # =====================================================
+
+    DNFSequence(Player:player)<suspends>:void =
+
+        Print("==============================")
+        Print("DNF SEQUENCE STARTED")
+        Print("==============================")
+
+
+        # Freeze DNF player
+
+        if (Character := Player.GetFortCharacter[]):
+
+            Character.PutInStasis(
+                stasis_args{
+                    AllowTurning := false,
+                    AllowFalling := false,
+                    AllowEmotes := false
+                }
+            )
+
+        Print("DNF Player Frozen")
+
+
+        # Timeout HUD
+
+        UIManager.ShowTimeOut(Player)
+
+        Print("TIME OUT HUD Displayed")
+
+
+        # Keep results visible
+
+        Sleep(ResultsDelay)
+
+
+        # Hide coins
+
+        UIManager.HideCoins(Player)
+
+
+        # Remove weapons
+
+        CombatManager.RemoveWeapons(Player)
+
+        Print("Player Weapons Removed")
+
+
+        # Teleport
+
+        TP_Leaderboard.Teleport(Player)
+
+        Print("DNF Player Teleported to Leaderboard")
+
+
+        # Restore
+
+        UnfreezePlayer(Player)
+
+        Print("DNF Player Movement Restored")
+
+
+    # =====================================================
+    # WAIT AFTER TIMEOUT
+    # =====================================================
+
+    SignalCompletionAfterTimeout()<suspends>:void =
+
+        Print("==============================")
+        Print("WAITING FOR DNF SEQUENCES")
+        Print("==============================")
+
+
+        Sleep(ResultsDelay)
+
+
+        Print("==============================")
+        Print("RACE COMPLETE (TIME OUT)")
+        Print("==============================")
+
+
+        RaceCompletedEvent.Signal(())
+
+
+    # =====================================================
+    # RESET RACE
+    # =====================================================
+
+    ResetRace<public>():void =
+
+        Print("==============================")
+        Print("RESETTING RACE")
+        Print("==============================")
+
+
+        # Lobby HUD
+
+        HUDC_Race.Disable()
+        HUDC_Lobby.Enable()
+
+
+        # Disable combat
+
+        CombatManager.DisableCombat()
+
+
+        # Remove remaining weapons
+
+        for (Player : RegisteredPlayers):
+
+            CombatManager.RemoveWeapons(Player)
+
+
+        # Disable and hide coins
+
+        UIManager.DisableCoinsHUD()
+
+
+        # Race state
+
+        set RaceStarted = false
+
+
+        # Gates
+
+        EventManager.ResetRaceEvents()
+
+        Print("Race Gates Reset")
+
+
+        # Timer
+
+        TimerManager.ResetRaceTimer()
+
+        Print("Race Timer Reset")
+
+
+        # Player data
+
+        PlayerManager.ResetAllPlayers()
+
+        Print("Player Data Reset")
+
+
+        # Checkpoints
+
+        CheckpointManager.ResetAll()
+
+        Print("Checkpoints Reset")
+
+
+        # Player registry
+
+        set RegisteredPlayers = array{}
+
+
+        # Register current players
+
+        for (Player : GetPlayspace().GetPlayers()):
+
+            RegisterPlayer(Player)
+
+
+        Print("==============================")
+        Print("RACE RESET COMPLETE")
+        Print("Registered Players: {RegisteredPlayers.Length}")
+        Print("==============================")
